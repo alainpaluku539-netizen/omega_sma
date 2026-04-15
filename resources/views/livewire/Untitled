@@ -1,0 +1,116 @@
+<div wire:poll.5s="loadData" class="w-full">
+    <div class="glass-panel p-4 sm:p-6 rounded-[2rem] border border-white/5 shadow-2xl transition-all">
+
+        <!-- HEADER -->
+        <div class="flex justify-between items-center mb-6">
+            <div class="flex flex-col">
+                <h2 class="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50 text-slate-400">
+                    Live Telemetry
+                </h2>
+                <span class="text-[8px] opacity-30 uppercase tracking-tighter mt-1">Node: {{ $device ?? 'N/A' }}</span>
+            </div>
+
+            <span class="text-[9px] px-3 py-1 rounded-full font-bold uppercase tracking-widest {{ $status === 'online' ? 'bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.2)]' : 'bg-rose-500/10 text-rose-400' }}">
+                <i class="fa-solid fa-circle text-[6px] mr-1 align-middle {{ $status === 'online' ? 'animate-pulse' : '' }}"></i> 
+                {{ $status }}
+            </span>
+        </div>
+
+        <!-- DOUBLE CHART AREA -->
+        <div class="mb-8 h-40 w-full relative" wire:ignore>
+            <canvas id="sensorDoubleChart"></canvas>
+        </div>
+
+        <!-- SENSOR GRID -->
+        <div class="grid grid-cols-3 gap-3 sm:gap-4 text-center">
+            <!-- Temp -->
+            <div class="bg-white/5 p-3 rounded-2xl border border-white/5 group hover:border-cyan-500/30 transition-all">
+                <p class="text-[9px] uppercase opacity-40 mb-1 tracking-widest text-slate-300">Temp</p>
+                <h3 class="text-lg font-bold text-cyan-400 group-hover:scale-110 transition-transform">
+                    {{ number_format($temperature, 1) }}<span class="text-[10px] ml-0.5 text-white/50">°C</span>
+                </h3>
+            </div>
+
+            <!-- Humidity -->
+            <div class="bg-white/5 p-3 rounded-2xl border border-white/5 group hover:border-blue-500/30 transition-all">
+                <p class="text-[9px] uppercase opacity-40 mb-1 tracking-widest text-slate-300">Hum</p>
+                <h3 class="text-lg font-bold text-blue-400 group-hover:scale-110 transition-transform">
+                    {{ number_format($humidity, 0) }}<span class="text-[10px] ml-0.5 text-white/50">%</span>
+                </h3>
+            </div>
+
+            <!-- Pressure -->
+            <div class="bg-white/5 p-3 rounded-2xl border border-white/5 group hover:border-purple-500/30 transition-all">
+                <p class="text-[9px] uppercase opacity-40 mb-1 tracking-widest text-slate-300">Press</p>
+                <h3 class="text-lg font-bold text-purple-400 group-hover:scale-110 transition-transform">
+                    {{ number_format($pressure, 0) }}
+                </h3>
+            </div>
+        </div>
+
+        @if($temperature > 30)
+            <div class="mt-6 p-2 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center text-rose-400 text-[10px] uppercase font-bold animate-pulse tracking-widest">
+                <i class="fa-solid fa-triangle-exclamation mr-2"></i> Critical Temp Warning
+            </div>
+        @endif
+    </div>
+
+    <!-- SCRIPT DU GRAPHIQUE -->
+    <script>
+        document.addEventListener('livewire:navigated', () => {
+            const ctx = document.getElementById('sensorDoubleChart');
+            if (!ctx) return;
+
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array(20).fill(''), 
+                    datasets: [
+                        {
+                            label: 'Temp',
+                            data: Array(20).fill({{ $temperature }}),
+                            borderColor: '#22d3ee',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            fill: true,
+                            backgroundColor: 'rgba(34, 211, 238, 0.05)'
+                        },
+                        {
+                            label: 'Hum',
+                            data: Array(20).fill({{ $humidity }}),
+                            borderColor: '#3b82f6',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            fill: true,
+                            backgroundColor: 'rgba(59, 130, 246, 0.05)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false, beginAtZero: false }
+                    }
+                }
+            });
+
+            // Écoute l'événement dispatché par PHP
+            window.addEventListener('update-sensor-chart', (event) => {
+                const { temp, hum } = event.detail[0];
+
+                chart.data.datasets[0].data.push(temp);
+                chart.data.datasets[0].data.shift();
+                
+                chart.data.datasets[1].data.push(hum);
+                chart.data.datasets[1].data.shift();
+                
+                chart.update('none');
+            });
+        });
+    </script>
+</div>

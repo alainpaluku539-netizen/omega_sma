@@ -3,8 +3,8 @@
 namespace App\Livewire;
 
 use Livewire\Component;
-use App\Models\SensorData as SensorModel;
 use Livewire\Attributes\On;
+use App\Models\SensorData as SensorModel;
 
 class SensorData extends Component
 {
@@ -16,30 +16,52 @@ class SensorData extends Component
 
     public function mount()
     {
-        $this->loadData();
+        $this->loadInitialData();
     }
 
-    /**
-     * Charge les dernières données et dispatch un événement pour le graphique JS
-     */
-    #[On('echo:sensors,SensorUpdated')] 
-    public function loadData()
+    // ======================================================
+    // CHARGE INITIALE (UNE SEULE FOIS)
+    // ======================================================
+    public function loadInitialData()
     {
-        $data = SensorModel::latest('measured_at')->first();
+        $data = SensorModel::latest('id')->first();
 
-        if ($data) {
-            $this->device = trim(mb_convert_encoding($data->device_id, 'UTF-8', 'UTF-8'));
-            $this->status = trim(mb_convert_encoding($data->status, 'UTF-8', 'UTF-8'));
-            $this->temperature = (float) $data->temperature;
-            $this->humidity = (float) $data->humidity;
-            $this->pressure = (float) $data->pressure;
+        if (!$data) return;
 
-            // Envoie les données vers Chart.js via un événement navigateur
-            $this->dispatch('update-sensor-chart', [
-                'temp' => $this->temperature,
-                'hum' => $this->humidity
-            ]);
-        }
+        $this->applyData($data);
+    }
+
+    // ======================================================
+    // REALTIME EVENT REVERB
+    // ======================================================
+    #[On('echo:sensors,sensor.updated')]
+    public function sensorUpdated($event)
+    {
+        // Directement les données broadcastWith()
+        $this->device = $event['device_id'] ?? $this->device;
+        $this->temperature = (float) ($event['temperature'] ?? 0);
+        $this->humidity = (float) ($event['humidity'] ?? 0);
+        $this->pressure = (float) ($event['pressure'] ?? 0);
+        $this->status = 'online';
+
+        // PUSH FRONT CHART
+        $this->dispatch('update-sensor-chart', [
+            'temp' => $this->temperature,
+            'hum'  => $this->humidity,
+            'time' => now()->format('H:i:s')
+        ]);
+    }
+
+    // ======================================================
+    // APPLY DATA (UTILITAIRE)
+    // ======================================================
+    private function applyData($data)
+    {
+        $this->device = $data->device_id;
+        $this->temperature = (float) $data->temperature;
+        $this->humidity = (float) $data->humidity;
+        $this->pressure = (float) $data->pressure;
+        $this->status = $data->status ?? 'offline';
     }
 
     public function render()

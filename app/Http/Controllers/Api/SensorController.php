@@ -5,13 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SensorData;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use PhpMqtt\Client\Facades\MQTT;
-use App\Events\SensorUpdated; // Importation de l'événement
+use App\Events\SensorUpdated;
 
 class SensorController extends Controller
 {
-    // 1. Pour l'ESP32 : Reçoit les données et les diffuse en temps réel
+    // ==========================================================
+    // STORE SENSOR DATA (ESP32 / MQTT / FLASK)
+    // ==========================================================
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -19,6 +19,7 @@ class SensorController extends Controller
             'temperature' => 'required|numeric',
             'humidity'    => 'required|numeric',
             'pressure'    => 'nullable|numeric',
+            'rssi'        => 'nullable|integer',
             'uptime'      => 'nullable|integer'
         ]);
 
@@ -26,65 +27,107 @@ class SensorController extends Controller
             'device_id'   => $validated['device_id'],
             'temperature' => $validated['temperature'],
             'humidity'    => $validated['humidity'],
-            'pressure'    => $validated['pressure'] ?? 0,
-            'uptime'      => $validated['uptime'] ?? 0,
+            'pressure'    => $validated['pressure'] ?? null,
+            'rssi'        => $validated['rssi'] ?? null,
             'measured_at' => now(),
         ]);
 
-        // DIFFUSION TEMPS RÉEL : Envoie les données au Dashboard instantanément
-        broadcast(new SensorUpdated($data))->toOthers();
+        // REALTIME BROADCAST
+        broadcast(new SensorUpdated($data));
 
-        return response()->json(['status' => 'success', 'id' => $data->id], 201);
+        return response()->json([
+            'status' => 'success',
+            'id' => $data->id
+        ], 201);
     }
 
-    // 2. Pour le Dashboard : Historique pour Chart.js au chargement de page
+    // ==========================================================
+    // LATEST + HISTORY (DASHBOARD)
+    // ==========================================================
     public function latest()
     {
         try {
-            $latest = SensorData::orderBy('measured_at', 'desc')->first();
+
+            $latest = SensorData::latest('id')->first();
 
             if (!$latest) {
-                return response()->json(['message' => 'Aucune donnée'], 200);
+                return response()->json([
+                    'current' => null,
+                    'history' => []
+                ]);
             }
 
-            $history = SensorData::orderBy('measured_at', 'desc')
-                ->take(15)
+            $history = SensorData::latest('id')
+                ->take(30)
                 ->get()
-                ->map(fn($item) => [
-                    'measured_at' => $item->measured_at,
-                    'temperature' => (float) $item->temperature,
-                    'humidity' => (float) $item->humidity
-                ]);
+                ->reverse()
+                ->values()
+                ->map(function ($item) {
+                    return [
+                        'measured_at' => $item->measured_at,
+                        'temperature' => (float) $item->temperature,
+                        'humidity'    => (float) $item->humidity,
+                        'rssi'        => $item->rssi
+                    ];
+                });
 
             return response()->json([
-                'current' => $latest,
-                'history' => $history->reverse()->values()
-            ], 200);
+                'current' => [
+                    'device_id'  => $latest->device_id,
+                    'temperature' => (float) $latest->temperature,
+                    'humidity'   => (float) $latest->humidity,
+                    'rssi'       => $latest->rssi,
+                    'measured_at' => $latest->measured_at
+                ],
+                'history' => $history
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+
+            return response()->json([
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
-    // 3. Contrôle des 4 Relais via MQTT (R1_ON, R2_OFF, etc.)
+    // ==========================================================
+    // RELAY CONTROL (MQTT)
+    // ==========================================================
     public function controlLed(Request $request)
     {
         $validated = $request->validate([
-            'relay' => 'required|integer|min:1|max:4',
-            'action' => 'required|in:ON,OFF'
+            'relay'  => 'nullable|integer|min:0|max:3',
+            'action' => 'nullable|in:ON,OFF',
+            'cmd'    => 'nullable|string'
         ]);
 
-        $message = "R" . $validated['relay'] . "_" . $validated['action'];
-
         try {
-            // Envoi au broker MQTT
-            MQTT::publish('esp32/01/cmd', $message);
+
+            $payload = [];
+
+            if (isset($validated['cmd'])) {
+                $payload = ['cmd' => $validated['cmd']];
+            } else {
+                $payload = [
+                    'relay' => $validated['relay'],
+                    'state' => $validated['action']
+                ];
+            }
+
+            \PhpMqtt\Client\Facades\MQTT::publish(
+                'esp32/01/cmd',
+                json_encode($payload)
+            );
 
             return response()->json([
                 'status' => 'success',
-                'sent' => $message
+                'sent' => $payload
             ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'MQTT Error: ' . $e->getMessage()], 500);
+
+            return response()->json([
+                'error' => 'MQTT Error',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }

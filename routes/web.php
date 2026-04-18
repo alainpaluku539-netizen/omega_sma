@@ -1,65 +1,58 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Auth;
-
 use App\Livewire\HomeDashboard;
-use App\Livewire\Devices;
+use App\Livewire\Pages\Home;
+use App\Livewire\Pages\Settings;
 use App\Livewire\SensorData;
 use App\Livewire\Lights;
+use App\Livewire\SecuritySystem;
+use App\Livewire\DeviceList;
+use App\Livewire\Cameras;
+use App\Livewire\Army\DocumentsInOut;
 
 /*
+
 |--------------------------------------------------------------------------
-| WEB ROUTES - SMART HOME IoT
+| OMEGA SMART HOME - WEB INTERFACE
 |--------------------------------------------------------------------------
 */
 
-// ==========================
-// PAGE D'ACCUEIL (LOGIN)
-// ==========================
+// Accueil public (Landing Page)
+Route::get('/', Home::class)->name('home');
 
-
-
-// ==========================
-// PROTECTED ROUTES
-// ==========================
+// Routes protégées par Fortify (Auth + Vérification Email)
 Route::middleware(['auth', 'verified'])->group(function () {
 
-    // --------------------------
-    // DASHBOARD PRINCIPAL
-    // --------------------------
-    Route::get('/dashboard', HomeDashboard::class)
-        ->name('dashboard');
+    /**
+     * DASHBOARD & ANALYTICS
+     */
+    Route::get('/dashboard', HomeDashboard::class)->name('dashboard');
+    Route::get('/analytics', SensorData::class)->name('analytics');
+    Route::get('/sensors-data', SensorData::class)->name('sensors');
 
-    Route::get('/sensor-data', SensorData::class)
-        ->name('sensors');
+    /**
+     * GESTION DES ÉQUIPEMENTS
+     */
+    Route::get('/devices', DeviceList::class)->name('devices');
+    Route::get('/smart-lighting', Lights::class)->name('lights');
 
-    // --------------------------
-    // DEVICES (IoT Management)
-    // --------------------------
-    Route::get('/devices', Devices::class)
-        ->name('devices');
+    /**
+     * SÉCURITÉ & SURVEILLANCE
+     */
+    Route::get('/security', SecuritySystem::class)->name('security');
+    Route::get('/cameras', Cameras::class)->name('cameras');
 
-    // --------------------------
-    // LIGHTS / RELAIS CONTROL
-    // --------------------------
-    Route::get('/lights', Lights::class)
-        ->name('lights');
+    /**
+     * CONFIGURATION
+     */
+    Route::get('/settings', Settings::class)->name('settings');
 
-    // --------------------------
-    // SECURITY PAGE
-    // --------------------------
-    //Route::get('/security', function () {
-    //    return view('security.index');
-    //})->name('security');
-
-    // --------------------------
-    // ANALYTICS PAGE
-    // --------------------------
-    //Route::get('/analytics', function () {
-    //    return view('analytics.index');
-    //})->name('analytics');
-
-    Route::livewire('/', HomeDashboard::class)->name('dashboard');
+    /**
+     * SYSTEME MILITAIRE (Accès restreint via Gate)
+     */
+    Route::get('/army/documents', DocumentsInOut::class)
+        ->name('army.documents')
+        ->middleware('can:access-military');
 
 });

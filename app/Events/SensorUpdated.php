@@ -13,20 +13,14 @@ class SensorUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $sensorData;
+    public SensorData $sensorData;
 
-    /**
-     * On passe l'objet SensorData au constructeur.
-     * Toutes les propriétés publiques de cet événement seront envoyées en JSON.
-     */
     public function __construct(SensorData $sensorData)
     {
         $this->sensorData = $sensorData;
     }
 
-    /**
-     * On utilise un canal public "sensors" pour que le dashboard puisse écouter sans login complexe.
-     */
+    // Canal public pour dashboard IoT
     public function broadcastOn(): array
     {
         return [
@@ -34,12 +28,24 @@ class SensorUpdated implements ShouldBroadcast
         ];
     }
 
-    /**
-     * Optionnel : Le nom de l'événement tel qu'il apparaîtra dans le JavaScript.
-     * Par défaut, c'est le nom de la classe.
-     */
+    // Nom de l’événement côté frontend (Echo / Reverb)
     public function broadcastAs(): string
     {
-        return 'SensorUpdated';
+        return 'sensor.updated';
+    }
+
+    // Payload optimisé pour Chart + UI (IMPORTANT)
+    public function broadcastWith(): array
+    {
+        return [
+            'id'          => $this->sensorData->id,
+            'device_id'   => $this->sensorData->device_id,
+            'temperature' => (float) $this->sensorData->temperature,
+            'humidity'    => (float) $this->sensorData->humidity,
+            'pressure'    => $this->sensorData->pressure,
+            'rssi'        => $this->sensorData->rssi,
+            'uptime'      => $this->sensorData->uptime,
+            'time'        => $this->sensorData->measured_at,
+        ];
     }
 }

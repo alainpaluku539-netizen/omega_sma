@@ -13,22 +13,14 @@ class EnergyUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $energyData;
+    public EnergyLog $energyLog;
 
-    /**
-     * On passe les données au constructeur pour qu'elles soient envoyées au JS
-     */
     public function __construct(EnergyLog $energyLog)
     {
-        $this->energyData = [
-            'usage_kw' => $energyLog->usage_kw,
-            'recorded_at' => $energyLog->recorded_at->format('H:i:s'),
-        ];
+        $this->energyLog = $energyLog;
     }
 
-    /**
-     * On diffuse sur un canal public pour que le Dashboard puisse l'écouter
-     */
+    // CANAL PUBLIC ENERGY DASHBOARD
     public function broadcastOn(): array
     {
         return [
@@ -36,11 +28,20 @@ class EnergyUpdated implements ShouldBroadcast
         ];
     }
 
-    /**
-     * Nom de l'événement côté JavaScript
-     */
-    public function broadcastAs()
+    // NOM EVENT FRONTEND
+    public function broadcastAs(): string
     {
-        return 'EnergyDataChanged';
+        return 'energy.updated';
+    }
+
+    // PAYLOAD CLEAN POUR CHART.JS
+    public function broadcastWith(): array
+    {
+        return [
+            'id'         => $this->energyLog->id,
+            'usage_kw'   => (float) $this->energyLog->usage_kw,
+            'recorded_at' => $this->energyLog->recorded_at?->format('H:i:s'),
+            'timestamp'  => $this->energyLog->recorded_at?->timestamp,
+        ];
     }
 }

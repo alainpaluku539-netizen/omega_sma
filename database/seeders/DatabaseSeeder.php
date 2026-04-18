@@ -17,23 +17,25 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // 1. Creation de l'Administrateur principal
+        // 1. Création de l'Administrateur principal (Nécessaire pour les relations)
         User::factory()->create([
             'name' => 'Admin Omega',
             'email' => 'admin@omega.com',
             'password' => Hash::make('aaaaaaaa'),
             'role' => 'admin',
             'active' => true,
-            'avatar' => 'https://ui-avatars.com',
+            'avatar' => null, // Laissé à null pour utiliser le getter par défaut de ton Model
         ]);
 
-        // 2. Appel des Seeders (Appareils et Donnees Capteurs)
+        // 2. Appel des Seeders structurés
         $this->call([
-            DeviceSeeder::class,
-            SensorDataSeeder::class, // AJOUT : Pour peupler votre graphique
+            DeviceIdentitySeeder::class, // Identités des appareils (ESP32, etc.)
+            DeviceSeeder::class,         // Instances d'appareils
+            SensorDataSeeder::class,     // Historique des capteurs (Graphiques)
+            DocumentSeeder::class,       // Système militaire (Docs In/Out)
         ]);
 
-        // 3. Creation de donnees historiques pour l'energie (24 dernieres heures)
+        // 3. Données historiques pour l'énergie
         for ($i = 24; $i >= 0; $i--) {
             EnergyLog::create([
                 'usage_kw' => rand(8, 35) / 10,

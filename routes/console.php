@@ -3,27 +3,51 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
-use App\Events\EnergyUpdated;
+use App\Models\SensorData;
+use App\Events\SensorUpdated;
 
 /*
 
 |--------------------------------------------------------------------------
-| Console Routes & Scheduler
+| OMEGA IOT CONSOLE - SYSTEM CONTROL
 |--------------------------------------------------------------------------
 */
 
+// Commande inspirante par dÃ©faut
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
 /**
- * Simulation de consommation d'énergie toutes les minutes.
- * Cela envoie des données aléatoires à Reverb pour faire bouger le graphique.
+ * âš¡ SIMULATION GLOBALE (MODE DÃ‰MO GITHUB)
+ * Planifie la simulation de consommation d'Ã©nergie chaque minute.
+ * Utilise la commande existante pour garantir l'enregistrement en DB + Broadcast.
+ */
+Schedule::command('app:simulate-energy-usage')->everyMinute();
+
+/**
+ * ðŸŒ¡ï¸ SIMULATION CAPTEURS (OPTIONNEL)
+ * Si vous n'avez pas l'ESP32 branchÃ©, cette tÃ¢che simule une activitÃ© thermique.
  */
 Schedule::call(function () {
-    // Génère 10 points de données (entre 0.5kW et 4.0kW)
-    $newData = collect(range(1, 10))->map(fn() => rand(5, 40) / 10)->toArray();
+    $temp = rand(210, 250) / 10; // 21.0 Ã  25.0 Â°C
+    $hum  = rand(45, 60);
 
-    // Diffuse l'événement sur le canal privé de l'utilisateur 1
-    broadcast(new EnergyUpdated($newData));
-})->everyMinute();
+    $data = SensorData::create([
+        'device_id'   => 'VIRTUAL_NODE_01',
+        'temperature' => $temp,
+        'humidity'    => $hum,
+        'rssi'        => -55,
+        'measured_at' => now(),
+    ]);
+
+    broadcast(new SensorUpdated($data));
+})->everyTwoMinutes();
+
+/**
+ * ðŸ§¹ NETTOYAGE DU SYSTÃˆME
+ * Supprime les logs de capteurs vieux de plus de 30 jours pour garder MySQL rapide.
+ */
+Schedule::call(function () {
+    SensorData::where('measured_at', '<', now()->subDays(30))->delete();
+})->daily();

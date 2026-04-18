@@ -2,42 +2,45 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Broadcast;
 use App\Http\Controllers\Api\SensorController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Events\SensorUpdated;
 use App\Models\SensorData;
+use Illuminate\Support\Facades\Log;
 
 /*
-
 |--------------------------------------------------------------------------
-| API IoT PLATFORM - OMEGA CORE
+| OMEGA IOT API - PRO 2026
 |--------------------------------------------------------------------------
 */
 
-// ==========================================
-// AUTHENTICATION (Sanctum)
-// ==========================================
+// ==========================================================
+// AUTH (SANCTUM)
+// ==========================================================
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
 
-// ==========================================
-// SENSORS (Données télémétriques de l'ESP32)
-// ==========================================
+// ==========================================================
+// SENSORS API
+// ==========================================================
 Route::prefix('sensors')->group(function () {
-    // Enregistrement manuel (si utilisé sans Python)
+
+    // save manual sensor (optional)
     Route::post('/update', [SensorController::class, 'store']);
-    
-    // Récupération pour Chart.js / Frontend
+
+    // latest data for dashboard
     Route::get('/latest', [SensorController::class, 'latest']);
 });
 
 
-// ==========================================
-// DEVICES (Gestion des états et du parc)
-// ==========================================
+// ==========================================================
+// DEVICES MANAGEMENT
+// ==========================================================
 Route::prefix('devices')->group(function () {
+
     Route::get('/', [DeviceController::class, 'index']);
     Route::post('/update', [DeviceController::class, 'update']);
     Route::post('/toggle', [DeviceController::class, 'toggle']);
@@ -45,41 +48,84 @@ Route::prefix('devices')->group(function () {
 });
 
 
-// ==========================================
-// CONTROLS (MQTT Actions via Laravel)
-// ==========================================
+// ==========================================================
+// CONTROL (RELAY / ESP32 COMMANDS)
+// ==========================================================
 Route::prefix('controls')->group(function () {
-    // Route appelée par le Dashboard pour piloter l'ESP32
-    Route::post('/relay', [SensorController::class, 'controlLed']);
+
+    Route::post('/relay', function (Request $request) {
+
+        $data = $request->validate([
+            'relay' => 'nullable|integer',
+            'state' => 'nullable|string',
+            'cmd'   => 'nullable|string',
+        ]);
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'Command received',
+            'data' => $data
+        ]);
+    });
 });
 
 
-// ==========================================
-// SYSTEM (Bridge Python -> Reverb)
-// ==========================================
-/**
- * Cette route est CRUCIALE : elle est appelée par ton script Python (app.py) 
- * dès qu'une donnée du DHT11 est insérée en base de données.
- * Elle déclenche l'événement qui fait bouger tes graphiques en temps réel.
- */
+// ==========================================================
+// REALTIME TRIGGER (FLASK → LARAVEL → REVERB)
+// ==========================================================
 Route::get('/trigger-sync', function () {
+
     try {
-        $data = SensorData::latest('measured_at')->first();
-        
-        if ($data) {
-            // Diffuse l'événement via WebSockets (Laravel Reverb)
-            broadcast(new SensorUpdated($data))->toOthers();
-            
+
+        $data = SensorData::latest('id')->first();
+
+        if (!$data) {
             return response()->json([
-                'status' => 'success',
-                'message' => 'Broadcast sent to dashboard',
-                'timestamp' => now()
-            ], 200);
+                'status' => 'empty',
+                'message' => 'No sensor data'
+            ]);
         }
-        
-        return response()->json(['status' => 'empty', 'message' => 'No data found'], 404);
-        
+
+        // LOG DEBUG
+        Log::info("IoT Broadcast", [
+            'device' => $data->device_id,
+            'temp'   => $data->temperature,
+            'hum'    => $data->humidity,
+            'rssi'   => $data->rssi
+        ]);
+
+        // BROADCAST EVENT (REALTIME DASHBOARD)
+        broadcast(new SensorUpdated($data));
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Event broadcasted',
+            'data' => $data
+        ]);
     } catch (\Exception $e) {
-        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+
+        Log::error("Trigger Sync Error", [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ], 500);
     }
+});
+
+
+// ==========================================================
+// MQTT / FLASK INTERNAL HOOK (OPTIONAL DEBUG)
+// ==========================================================
+Route::get('/status', function () {
+
+    return response()->json([
+        'system' => 'OMEGA IOT PLATFORM',
+        'status' => 'running',
+        'time' => now(),
+        'mqtt' => 'enabled',
+        'reverb' => 'enabled'
+    ]);
 });
